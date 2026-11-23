@@ -60,13 +60,29 @@ python -m venv .venv
 source .venv/bin/activate            # Windows: .venv\Scripts\activate
 pip install -r requirements-dev.txt
 
-pytest -q                            # 17 tests
+pytest -q                            # 22 tests
 python scripts/run_scenarios.py      # the six demo scenarios in the terminal
 python scripts/evaluate.py --all     # full metrics, saved to results/
 streamlit run app.py                 # the dashboard at http://localhost:8501
 ```
 
 Full GitHub and deployment steps are in **[docs/BUILD_GUIDE.md](docs/BUILD_GUIDE.md)**.
+
+## Real-world walkthrough
+
+The dashboard opens on four short stories at a fictional bank, played step by step. On the left you see
+what people see (a customer chat, a staff tool, an analyst's request); on the right, the action the AI
+proposes and Agent Under Watch's live decision.
+
+1. **An ordinary customer chat** - balance check allowed; phone-number change blocked until the customer
+   completes extra verification.
+2. **A poisoned document hijacks the assistant** - hidden text in an uploaded PDF makes the AI try a bulk
+   export and another customer's account. Both blocked; the customer still gets a normal answer.
+3. **A hijacked staff tool scrapes customers** - 300 individually-permitted lookups; flagged at #4, session
+   paused, only a handful of records out.
+4. **A legitimate bulk export needs a sign-off** - held, approved by a named lead, then executed and logged.
+
+The agent's choices are scripted so the demo is repeatable; every decision is made live by the gateway.
 
 ## Demo scenarios
 
@@ -120,6 +136,7 @@ agent_under_watch/
   mockdb.py       fake system of record (synthetic)
   simulate.py     synthetic normal traffic and attacks
   scenarios.py    demo scenarios A-F
+  story.py        real-world walkthrough stories
   system.py       wiring, training, replay, evaluation
 policy_packs/     banking.yaml, healthcare.yaml
 scripts/          run_scenarios.py, evaluate.py

@@ -5,6 +5,7 @@ Deploy:        share.streamlit.io -> New app -> pick this repo -> main file: app
 """
 from __future__ import annotations
 
+import json
 import os
 
 import pandas as pd
@@ -12,6 +13,7 @@ import streamlit as st
 
 from agent_under_watch import Verdict, build_system, evaluate, list_packs, replay
 from agent_under_watch.scenarios import SCENARIOS, run_scenario
+from agent_under_watch.story import BANK, STORIES, StoryRunner
 
 st.set_page_config(page_title="Agent Under Watch", page_icon="🛡️", layout="wide")
 
@@ -48,8 +50,9 @@ st.sidebar.markdown(
 st.title("Agent Under Watch")
 st.caption("Rules enforce. Machine learning raises scrutiny. Humans decide the grey areas. Everything is logged.")
 
-tab_demo, tab_activity, tab_review, tab_audit, tab_eval, tab_policy = st.tabs(
-    ["Demo scenarios", "Activity", "Review queue", "Audit log", "Evaluation", "Policy pack"]
+tab_story, tab_demo, tab_activity, tab_review, tab_audit, tab_eval, tab_policy = st.tabs(
+    ["Real-world walkthrough", "Demo scenarios", "Activity", "Review queue", "Audit log", "Evaluation",
+     "Policy pack"]
 )
 
 
@@ -66,6 +69,97 @@ def decision_card(action, decision) -> None:
             st.caption("Risk components (0-1): " + ", ".join(
                 f"{k} {v:.2f}" for k, v in decision.risk_components.items()))
 
+
+# ---------------------------------------------------------------- real-world walkthrough
+def render_entry(e) -> None:
+    s = e.step
+    if s.kind == "user":
+        st.chat_message("user", avatar="🧑").markdown(f"**{s.speaker}:** {s.text}")
+    elif s.kind == "agent_say":
+        st.chat_message("assistant", avatar="🤖").markdown(f"**{s.speaker}:** {s.text}")
+    elif s.kind == "doc":
+        st.chat_message("doc", avatar="📄").warning(f"**{s.speaker}** (invisible to Maria):  \n_{s.text}_")
+    elif s.kind == "event":
+        st.chat_message("event", avatar="🔔").info(f"**{s.speaker}:** {s.text}")
+    elif s.kind == "burst":
+        b = e.burst
+        st.chat_message("burst", avatar="⚠️").markdown(
+            f"**{b['attempted']} lookups attempted** → {b['ALLOW']} allowed · {b['ESCALATE']} held for review · "
+            f"**{b['BLOCK']} blocked**. First flagged at lookup #{b['first_flagged_at']}.")
+    elif s.kind == "call":
+        verdict = e.decision.verdict.value
+        icon = {"ALLOW": "✅", "BLOCK": "⛔", "ESCALATE": "⏸️"}[verdict]
+        st.caption(f"{icon} behind the scenes: AI tried `{s.tool}` → **{verdict}**")
+        if e.reply:
+            st.chat_message("assistant", avatar="🤖").write(e.reply)
+
+
+def render_behind_the_scenes(e, runner) -> None:
+    s = e.step
+    if s.kind == "call" or (s.kind == "burst" and e.action is not None):
+        a = e.action
+        session = runner.system.auth.get(a.session_id)
+        st.markdown("**1 · What the AI decided to do** (scripted)")
+        st.caption(s.thought)
+        st.markdown("**2 · The action it sent to Agent Under Watch**")
+        st.code(json.dumps({
+            "agent": a.agent_id, "tool": a.tool, "record": a.subject_id, "records": a.record_count,
+            "fields": a.fields, "stated_purpose": a.purpose,
+        }, indent=2), language="json")
+        st.markdown("**3 · Who is really logged in** (from the login system, not the AI)")
+        st.caption(f"{runner.system.pack.subject_label}: {session.subject_id or 'n/a (staff tool)'} · "
+                   f"extra verification: {'yes' if session.step_up_verified else 'no'}")
+        st.markdown("**4 · Decision**")
+        decision_card(a, e.decision)
+    elif s.kind == "event" and e.decision is not None:
+        st.markdown("**Human decision, recorded in the audit log**")
+        BANNER[e.decision.verdict.value](e.decision.reasons[0])
+        st.caption("The export ran only after a named person approved it.")
+    else:
+        st.caption("Nothing for the gateway to check on this step - people are just talking or reacting.")
+
+
+with tab_story:
+    story_system = load("banking")[0]
+    st.markdown(f"#### How it works in real life · {BANK}")
+    st.caption("People and the AI agent's choices are scripted so the demo is repeatable. Every decision is "
+               "made live by the real gateway. All names and data are invented.")
+    story_key = st.selectbox("Story", list(STORIES), format_func=lambda k: STORIES[k].title)
+    runner = st.session_state.get("runner")
+    if runner is None or runner.story.key != story_key:
+        runner = st.session_state["runner"] = StoryRunner(story_system, story_key)
+    story = runner.story
+    st.info(story.setting)
+
+    b1, b2, b3 = st.columns([1, 1, 3])
+    if b1.button("Next step ▶", type="primary", disabled=runner.done) and not runner.done:
+        runner.step()
+    if b2.button("Restart"):
+        runner = st.session_state["runner"] = StoryRunner(story_system, story_key)
+    b3.caption(f"Step {runner.index} of {len(story.steps)}")
+
+    chat_col, gate_col = st.columns([3, 2], gap="large")
+    with chat_col:
+        st.markdown("##### What people see")
+        if not runner.entries:
+            st.caption("Press **Next step** to begin.")
+        for entry in runner.entries:
+            render_entry(entry)
+    with gate_col:
+        st.markdown("##### Behind the scenes: Agent Under Watch")
+        latest = runner.entries[-1] if runner.entries else None
+        if latest is None:
+            st.caption("Each action the AI proposes will appear here, with the gateway's decision.")
+        else:
+            render_behind_the_scenes(latest, runner)
+
+    if runner.done:
+        st.success(f"**What this shows:** {story.lesson}")
+        trail = [r for r in story_system.audit.rows(limit=2000) if r["session_id"] in runner.sessions.values()]
+        with st.expander(f"Audit trail for this story ({len(trail)} entries)"):
+            st.dataframe(pd.DataFrame(trail)[["id", "ts", "event", "agent_id", "agent_owner",
+                                              "authenticated_subject", "tool", "target_subject", "record_count",
+                                              "verdict", "reviewer", "reasons"]], hide_index=True)
 
 # ---------------------------------------------------------------- demo
 with tab_demo:
