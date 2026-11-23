@@ -1,6 +1,10 @@
 # Agent Under Watch
 
+![tests](https://github.com/aishwaryapurohit15/agent-under-watch/actions/workflows/ci.yml/badge.svg)
+
 **A governance gateway that checks every action an AI agent proposes, before it runs.**
+
+**Live demo:** https://agent-under-watch.streamlit.app
 
 AI agents now read customer records, update data and start workflows. Agent Under Watch sits between
 an agent and the systems it touches and decides, for every single action:
