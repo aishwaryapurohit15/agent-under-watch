@@ -1,0 +1,15 @@
+[project]
+name = "agent-under-watch"
+version = "0.1.0"
+description = "A governance gateway that checks every AI-agent action before it executes."
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

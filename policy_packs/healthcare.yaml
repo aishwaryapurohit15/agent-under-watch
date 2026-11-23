@@ -1,0 +1,95 @@
+# Policy pack: hospital / health system (all data synthetic)
+# Same engine as banking - only this file is different.
+
+domain: healthcare
+subject_label: patient
+
+sensitivity:
+  name: 1
+  appointments: 1
+  insurance_id: 2
+  address: 2
+  phone: 2
+  medications: 2
+  diagnoses: 3
+  lab_results: 3
+  ssn: 3
+
+prohibited_tools: [prescribe_medication, export_external, modify_diagnosis]
+
+agents:
+  patient_portal_assistant:
+    owner: Director of Patient Experience
+    purpose: Answer the logged-in patient's questions about their own care
+    session_bound: true
+    working_hours: [0, 24]
+    tools:
+      read_record:
+        max_records: 1
+        allowed_fields: [name, appointments, medications, lab_results]
+      update_contact:
+        max_records: 1
+        allowed_fields: [address, phone]
+        requires_step_up: true
+    normal:
+      actions: [1, 4]
+      gap_seconds: [15, 120]
+      tools: {read_record: 0.85, update_contact: 0.15}
+      records: [1, 1]
+
+  clinician_assistant:
+    owner: Chief Medical Information Officer
+    purpose: Help clinicians pull up a patient chart during care
+    session_bound: false
+    working_hours: [7, 19]
+    tools:
+      read_record:
+        max_records: 1
+        allowed_fields: [name, appointments, medications, diagnoses, lab_results]
+    normal:
+      actions: [1, 8]
+      gap_seconds: [45, 900]
+      tools: {read_record: 1.0}
+      records: [1, 1]
+
+  billing_report_agent:
+    owner: Revenue Cycle Compliance Manager
+    purpose: Produce billing and claims reports
+    session_bound: false
+    working_hours: [6, 20]
+    tools:
+      read_record:
+        max_records: 1000
+        review_above: 100
+        allowed_fields: [name, insurance_id, appointments]
+      export_records:
+        max_records: 1000
+        review_above: 100
+        allowed_fields: [name, insurance_id, appointments]
+    normal:
+      actions: [1, 3]
+      gap_seconds: [60, 600]
+      tools: {read_record: 0.6, export_records: 0.4}
+      records: [10, 80]
+
+risk:
+  escalate_at: 50
+  weights: {volume: 30, sensitivity: 25, anomaly: 35, off_hours: 10}
+
+anomaly:
+  threshold_percentile: 0.5
+  pause_after: 3
+
+simulation:
+  n_subjects: 20000
+  roles:
+    bound_agent: patient_portal_assistant
+    lookup_agent: clinician_assistant
+    bulk_agent: billing_report_agent
+    read_tool: read_record
+    export_tool: export_records
+    forbidden_tool: export_external
+    bound_fields: [name, appointments]
+    lookup_fields: [name, medications]
+    sensitive_lookup_fields: [name, diagnoses, lab_results]
+    bulk_fields: [name, insurance_id, appointments]

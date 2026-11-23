@@ -1,0 +1,96 @@
+# Policy pack: retail banking (all data synthetic)
+# Edit this file to change what agents may do. No code changes needed.
+
+domain: banking
+subject_label: customer
+
+# How sensitive each data field is: 1 low, 2 medium, 3 high
+sensitivity:
+  name: 1
+  account_type: 1
+  balance: 2
+  transactions: 2
+  address: 2
+  phone: 2
+  account_number: 3
+  ssn: 3
+
+# No AI agent may ever use these tools
+prohibited_tools: [transfer_funds, export_external, change_credit_limit]
+
+agents:
+  customer_service_bot:
+    owner: Head of Retail Digital Channels
+    purpose: Answer the logged-in customer's questions about their own accounts
+    session_bound: true          # may only touch the authenticated customer
+    working_hours: [0, 24]       # customers chat at any hour
+    tools:
+      read_account:
+        max_records: 1
+        allowed_fields: [name, account_type, balance, transactions]
+      update_contact:
+        max_records: 1
+        allowed_fields: [address, phone]
+        requires_step_up: true   # customer must complete extra verification first
+    normal:                      # used only to simulate realistic behaviour
+      actions: [1, 4]
+      gap_seconds: [15, 120]
+      tools: {read_account: 0.85, update_contact: 0.15}
+      records: [1, 1]
+
+  staff_assistant:
+    owner: Head of Branch Operations
+    purpose: Help branch staff look up any customer, one record at a time
+    session_bound: false         # staff serve many customers
+    working_hours: [8, 18]
+    tools:
+      read_account:
+        max_records: 1
+        allowed_fields: [name, account_type, balance, address, phone]
+    normal:
+      actions: [1, 8]
+      gap_seconds: [45, 900]
+      tools: {read_account: 1.0}
+      records: [1, 1]
+
+  reporting_agent:
+    owner: Compliance Reporting Lead
+    purpose: Produce internal compliance and portfolio reports
+    session_bound: false
+    working_hours: [6, 20]
+    tools:
+      read_account:
+        max_records: 1000
+        review_above: 100        # bigger pulls need a human sign-off
+        allowed_fields: [name, account_type, balance]
+      export_records:
+        max_records: 1000
+        review_above: 100
+        allowed_fields: [name, account_type, balance]
+    normal:
+      actions: [1, 3]
+      gap_seconds: [60, 600]
+      tools: {read_account: 0.6, export_records: 0.4}
+      records: [10, 80]
+
+risk:
+  escalate_at: 50
+  weights: {volume: 30, sensitivity: 25, anomaly: 35, off_hours: 10}
+
+anomaly:
+  threshold_percentile: 0.5   # % of normal training behaviour treated as the alert line
+  pause_after: 3              # anomalous actions before the session is paused
+
+simulation:
+  n_subjects: 20000
+  roles:                      # maps generic attack scenarios onto this domain
+    bound_agent: customer_service_bot
+    lookup_agent: staff_assistant
+    bulk_agent: reporting_agent
+    read_tool: read_account
+    export_tool: export_records
+    forbidden_tool: export_external
+    bound_fields: [name, balance]
+    lookup_fields: [name, balance]
+    sensitive_lookup_fields: [name, balance, address, phone]
+    bulk_fields: [name, account_type, balance]
